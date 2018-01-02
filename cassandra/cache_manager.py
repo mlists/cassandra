@@ -2,7 +2,7 @@ import pickle
 import glob
 
 from collections import OrderedDict
-from typing import Dict
+from typing import Dict, List
 
 
 class CacheManager(object):
@@ -35,15 +35,13 @@ class CacheManager(object):
 
             # write the cache to disk
             for year, year_odict in self.cache.items():
-                cache_file = ''.join([cache_directory, '/', str(year),
-                                      self.CACHE_FILE_EXTENSION])
-                pickle.dump(year_odict, open(cache_file, 'wb'))
+                self.write_cache(year, year_odict)
         else:
             self.cache = OrderedDict()
 
             # Find the cache files. Must be of the form:
             # <year>-event_matches.p
-            cache_file_pattern = ''.join([cache_directory, '/',
+            cache_file_pattern = ''.join([self.cache_directory, '/',
                                           '????',  # match year
                                           self.CACHE_FILE_EXTENSION])
             cache_files = glob.glob(cache_file_pattern)
@@ -58,3 +56,26 @@ class CacheManager(object):
                 year_odict = pickle.load(open(fname, 'rb'))
                 year = get_year(fname)
                 self.cache[year] = year_odict
+
+    def add_event_matches(self, year: int, event_code: str, matches: List):
+        """ Add matches to our cache.
+
+        The matches are added to both this program instance's copy of the
+        cache (in this_instance.cache), and written to the disk.
+
+        Args:
+            year: The year the matches need to be added to.
+            event_code: The event code corresponding to the event the matches
+            belong to.
+            matches: The list of matches to add to the cache.
+
+        """
+        self.cache[year][event_code] = matches
+        self.write_cache(year, self.cache[year])
+
+    def write_cache(self, year: int, value):
+        """ Write value to the cache for year. """
+
+        cache_file = ''.join([self.cache_directory, '/', str(year),
+                              self.CACHE_FILE_EXTENSION])
+        pickle.dump(value, open(cache_file, 'wb'))
