@@ -2,7 +2,7 @@
 """
 
 from data_store import DataStore
-import requests
+import tbapy
 
 
 class Cassandra:
@@ -20,12 +20,12 @@ class Cassandra:
         # cache previous results
         events = {}
         matches = {}
-        base_url = "https://www.thebluealliance.com/api/v3"
-        header = {"X-TBA-Auth-Key": self.key}
+        tba = tbapy.TBA(self.key)
+
 
         # fetch events by year and order chronologically
         for year in years:
-            r = requests.get(base_url + "/events/" + str(year) + "/simple", headers=header).json()
+            r = tba.events(year, simple=True)
 
             # sort by date and don't include offseason events
             a = sorted(r, key=lambda b: b["start_date"])
@@ -36,14 +36,16 @@ class Cassandra:
         # fetch matches by year and event
         for year in years:
             for event in events[str(year)]:
-                r = requests.get(base_url + "/event/" + event + "/matches/simple", headers=header).json()
+                r = tba.event_matches(event)
 
                 matches[event] = r
 
         # save to cache
-        store = DataStore(new_data_store=True, year_events=events)
+        store = DataStore(new_data_store=False, year_events=events)
 
         for year in years:
             for event in events[str(year)]:
                 event_matches = matches[event]
                 store.add_event_matches(str(year), event, event_matches)
+
+        self.matches = matches
