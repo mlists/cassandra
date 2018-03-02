@@ -82,9 +82,13 @@ class DataStore(object):
                 self.data[year] = year_odict
                 for event_code in year_events[year]:
                     if event_code not in self.data[year].keys():
-                        self.data[year][event_code] = {'last_modified':'', 'info':events_dict[event_code], 'matches':None}
+                        self.data[year][event_code] = {'last_modified': '',
+                                                       'info': events_dict[event_code],
+                                                       'matches': None}
             else:
-                year_odict = OrderedDict((event_code, {'last_modified':'', 'info':events_dict[event_code], 'matches':None})
+                year_odict = OrderedDict((event_code, {'last_modified': '',
+                                                       'info': events_dict[event_code],
+                                                       'matches': None})
                                          for event_code in year_events[year])
                 self.data[year] = year_odict
 
@@ -121,7 +125,8 @@ class DataStore(object):
                             "store, but matches for it are being added."
                             % (event_code, year))
         event_metadata = self.data[year][event_code]['info']
-        self.data[year][event_code] = {'last_modified':last_modified, 'info':event_metadata, 'matches':matches}
+        self.data[year][event_code] = {'last_modified': last_modified,
+                                       'info': event_metadata, 'matches': matches}
         self.write_cache(year, self.data[year])
 
     def add_single_match(self, year: int, event_code: str, match: Match):
