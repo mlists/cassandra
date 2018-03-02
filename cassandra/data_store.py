@@ -1,9 +1,11 @@
 import pickle
 import glob
 import logging
+import os
 import tbapy
 
 from collections import OrderedDict
+from datetime import datetime
 from typing import List
 
 
@@ -12,7 +14,7 @@ class DataStore(object):
     CACHE_FILE_EXTENSION = '-event_matches.p'
 
     def __init__(self, cache_directory: str='cache',
-                 new_data_store: bool=False, years: list=[]):
+            new_data_store: bool=False, tba_auth_key: str=None, years: list=[]):
         """Initialise the DataStore class.
 
         Args:
@@ -21,11 +23,13 @@ class DataStore(object):
             new_data_store: Set to True to create a new data store with the
             structure of year_events instead of using the one currently in
             cache_directory.
+            tba_auth_key: Authorisation key for fetching data from TheBlueAlliance.com.
             year_events: For a new data store being created, the keys of this
             dictionary correspond to the years we will be storing matches for,
             and the values the events within those years. List of events must
             be ordered by start date (ie in chronological order).
         """
+        self.tba_auth_key = tba_auth_key
 
         # First we need to monkey patch the tbapy.TBA class so we can
         # use the last-modified header
@@ -33,18 +37,25 @@ class DataStore(object):
             from requests import get
             resp = get(self.URL_PRE + url, headers={'X-TBA-Auth-Key': self.auth_key,
                                                     'If-Modified-Since': self.last_modified})
-            self.last_modified_response = resp.headers['If-Modified-Since']
-            return resp.json() if resp.status_code == 200 else {}
+            if resp.status_code == 200:
+                self.last_modified_response = resp.headers['Last-Modified']
+                return resp.json()
+            else:
+                return {}
         tbapy.TBA._get = _new_tba_get
 
-        # TODO - read the tba_auth_key from the file, or get it as an argument?
         self.tba = tbapy.TBA(self.tba_auth_key)
         self.tba.last_modified = ''  # e.g. 'Thu, 01 Mar 2018 17:21:48 GMT'
+        self.tba.last_modified_response = ''
 
         self.cache_directory = cache_directory.rstrip('/')
+        if not os.path.exists(self.cache_directory):
+            os.makedirs(cache_directory)
 
         if not years:
-            years = range(2008, 2019)
+            n = datetime.now()
+            t = n.timetuple()
+            years = range(2008, t[0])
 
         year_events = {}
         # fetch events by year and order chronologically
@@ -59,7 +70,7 @@ class DataStore(object):
 
         if new_data_store:
             year_odicts = [(year, OrderedDict(
-                [(event_code, None) for event_code in events]))
+                [(event_code, [None, None]) for event_code in events]))
                 for year, events in year_events.items()]
             self.data = OrderedDict(sorted(year_odicts,
                                            key=lambda x: x[0]))
@@ -91,9 +102,9 @@ class DataStore(object):
         # fetch matches by year and event
         for year in years:
             for event in year_events[year]:
-                r = self.fetch_event_matches(event)
+                r = self.fetch_event_matches(year, event)
 
-                self.data_store[year][event] = r
+                self.add_event_matches(year=year, event_code=event, matches=r[1], last_modified=r[0])
 
     def add_event_matches(self, year: int, event_code: str, matches: List, last_modified: str):
         """ Add matches to our data store.
@@ -148,10 +159,9 @@ class DataStore(object):
     def fetch_event_matches(self, event_year: int, event_code: str) -> List:
         """ Fetch event matches from TBA. """
 
-        self.last_modified = self.data[event_year][event_code][0]
-        self.data[event_year][event_code][0] = self.last_modified_response
-        matches = self.tba.event_matches[event_code]
-        return matches if matches else None
+        self.tba.last_modified = self.data[event_year][event_code][0]
+        matches = self.tba.event_matches(event_code)
+        return [self.tba.last_modified_response, matches] if matches else None
 
     def write_cache(self, year: int, value):
         """ Write value to the cache for year. """
