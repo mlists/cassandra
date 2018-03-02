@@ -164,7 +164,8 @@ class DataStore(object):
            or (current_entry is None and event_start-one_day < now)):
             self.tba.last_modified = self.data[event_year][event_code][0]
             matches = self.tba.event_matches(event_code)
-            return [self.tba.last_modified_response, matches] if matches else ['', None]
+            matches_odict = self.sort_by_match_number(matches)
+            return [self.tba.last_modified_response, matches_odict] if matches else ['', None]
         return ['', None]
 
     def write_cache(self, year: int, value):
@@ -173,3 +174,22 @@ class DataStore(object):
         cache_file = ''.join([self.cache_directory, '/', str(year),
                               self.CACHE_FILE_EXTENSION])
         pickle.dump(value, open(cache_file, 'wb'))
+
+    @staticmethod
+    def sort_by_match_number(matches):
+        """ Sort matches (which is a list of dictionares representing a
+        Blue Alliance API event response) by match number.
+
+        Returns:
+            Ordered dict of matches sorted by match / set number. """
+
+        comp_levels = OrderedDict([('qm', []), ('ef', []), ('sf', []), ('f', [])])
+
+        for match in matches:
+            comp_levels[match['comp_level']].append(match)
+        sorted_matches = []
+        for level in comp_levels.values():
+            sorted_matches += sorted(level, key=lambda x: (x['match_number'], x['set_number']))
+        matches_odict = OrderedDict([(match['key'], match) for match in sorted_matches])
+
+        return matches_odict
