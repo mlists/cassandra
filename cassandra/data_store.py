@@ -13,16 +13,12 @@ class DataStore(object):
 
     CACHE_FILE_EXTENSION = '-event_matches.p'
 
-    def __init__(self, cache_directory: str='cache',
-            new_data_store: bool=False, tba_auth_key: str=None, years: list=[]):
+    def __init__(self, cache_directory: str='cache', tba_auth_key: str=None, years: list=[]):
         """Initialise the DataStore class.
 
         Args:
             cache_directory: Path to directory the data store's cache files
             will be saved in. Defaults to `./cache/`.
-            new_data_store: Set to True to create a new data store with the
-            structure of year_events instead of using the one currently in
-            cache_directory.
             tba_auth_key: Authorisation key for fetching data from TheBlueAlliance.com.
             year_events: For a new data store being created, the keys of this
             dictionary correspond to the years we will be storing matches for,
@@ -57,46 +53,37 @@ class DataStore(object):
             t = n.timetuple()
             years = range(2008, t[0])
 
+        # Find the data files. Must be of the form:
+        # <year>-event_matches.p
+        cache_file_pattern = ''.join([self.cache_directory, '/',
+                                      '????',  # match year
+                                      self.CACHE_FILE_EXTENSION])
+        cache_files = glob.glob(cache_file_pattern)
+
+        self.data = OrderedDict()
         year_events = {}
         # fetch events by year and order chronologically
         for year in years:
             r = self.tba.events(year, simple=True)
 
             # sort by date and don't include offseason events
-            a = sorted(r, key=lambda b: b["start_date"])
-            a = [i["key"] for i in a if i["event_type"] < 99]
+            events_sorted = sorted(r, key=lambda b: b["start_date"])
+            events_dict = {ev['key']: ev for ev in events_sorted}
+            a = [i["key"] for i in events_sorted if i["event_type"] < 99]
 
             year_events[year] = a
 
-        if new_data_store:
-            year_odicts = [(year, OrderedDict(
-                [(event_code, [None, None]) for event_code in events]))
-                for year, events in year_events.items()]
-            self.data = OrderedDict(sorted(year_odicts,
-                                           key=lambda x: x[0]))
-
-            # write the data to disk
-            for year, year_odict in self.data.items():
-                self.write_cache(year, year_odict)
-        else:
-            self.data = OrderedDict()
-
-            # Find the data files. Must be of the form:
-            # <year>-event_matches.p
-            cache_file_pattern = ''.join([self.cache_directory, '/',
-                                          '????',  # match year
-                                          self.CACHE_FILE_EXTENSION])
-            cache_files = glob.glob(cache_file_pattern)
-
-            # Sort cache files by year
-            def get_year(cache_fname): return int(
-                    cache_fname.lstrip(self.cache_directory+'/')[:4])
-            cache_files = sorted(cache_files, key=get_year)
-
-            #
-            for fname in cache_files:
-                year_odict = pickle.load(open(fname, 'rb'))
-                year = get_year(fname)
+            cache_file = ''.join([self.cache_directory, '/', str(year),
+                                  self.CACHE_FILE_EXTENSION])
+            if cache_file in cache_files:
+                year_odict = pickle.load(open(cache_file, 'rb'))
+                self.data[year] = year_odict
+                for event_code in year_events[year]:
+                    if event_code not in self.data[year].keys():
+                        self.data[year][event_code] = ['', events_dict[event_code], None]
+            else:
+                year_odict = OrderedDict((event_code, ['', events_dict[event_code], None])
+                                         for event_code in year_events[year])
                 self.data[year] = year_odict
 
         # fetch matches by year and event
@@ -104,7 +91,9 @@ class DataStore(object):
             for event in year_events[year]:
                 r = self.fetch_event_matches(year, event)
 
-                self.add_event_matches(year=year, event_code=event, matches=r[1], last_modified=r[0])
+                self.add_event_matches(year=year, event_code=event, matches=r[1],
+                                       last_modified=r[0])
+            self.write_cache(year, self.data[year])
 
     def add_event_matches(self, year: int, event_code: str, matches: List, last_modified: str):
         """ Add matches to our data store.
@@ -161,7 +150,7 @@ class DataStore(object):
 
         self.tba.last_modified = self.data[event_year][event_code][0]
         matches = self.tba.event_matches(event_code)
-        return [self.tba.last_modified_response, matches] if matches else None
+        return [self.tba.last_modified_response, matches] if matches else ['', None]
 
     def write_cache(self, year: int, value):
         """ Write value to the cache for year. """
