@@ -1,6 +1,7 @@
 import pickle
 import glob
 import logging
+import tbapy
 
 from collections import OrderedDict
 from typing import Dict, List
@@ -25,6 +26,17 @@ class DataStore(object):
             and the values the events within those years. List of events must
             be ordered by start date (ie in chronological order).
         """
+        # First we need to monkey patch the tbapy.TBA class so we can
+        # use the last-modified header
+        def _new_tba_get(self, url):
+            from requests import get
+            resp = get(self.URL_PRE + url, headers={'X-TBA-Auth-Key': self.auth_key, 'If-Modified-Since': self.last_modified})
+            return resp.json() if resp.status_code == 200 else {}
+        tbapy.TBA._get = _new_tba_get
+
+        # TODO - read the tba_auth_key from the file, or get it as an argument?
+        self.tba = tbapy.TBA(self.tba_auth_key)
+        self.tba.last_modified = '' # e.g. 'Thu, 01 Mar 2018 17:21:48 GMT'
 
         self.cache_directory = cache_directory.rstrip('/')
 
