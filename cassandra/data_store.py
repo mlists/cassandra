@@ -2,6 +2,7 @@ import pickle
 import glob
 import logging
 import os
+import requests
 import tbapy
 
 from collections import OrderedDict
@@ -30,8 +31,7 @@ class DataStore(object):
         # First we need to monkey patch the tbapy.TBA class so we can
         # use the last-modified header
         def _new_tba_get(self, url):
-            from requests import get
-            resp = get(self.URL_PRE + url, headers={'X-TBA-Auth-Key': self.auth_key,
+            resp = self.session.get(self.URL_PRE + url, headers={'X-TBA-Auth-Key': self.auth_key,
                                                     'If-Modified-Since': self.last_modified})
             if resp.status_code == 200:
                 self.last_modified_response = resp.headers['Last-Modified']
@@ -43,6 +43,7 @@ class DataStore(object):
         self.tba = tbapy.TBA(self.tba_auth_key)
         self.tba.last_modified = ''  # e.g. 'Thu, 01 Mar 2018 17:21:48 GMT'
         self.tba.last_modified_response = ''
+        self.tba.session = requests.Session()
 
         self.cache_directory = cache_directory.rstrip('/')
         if not os.path.exists(self.cache_directory):
@@ -88,12 +89,15 @@ class DataStore(object):
 
         # fetch matches by year and event
         for year in years:
+            write_to_cache = False
             for event in year_events[year]:
                 r = self.fetch_event_matches(year, event)
-
-                self.add_event_matches(year=year, event_code=event, matches=r[1],
+                if r[1]:
+                    self.add_event_matches(year=year, event_code=event, matches=r[1],
                                        last_modified=r[0])
-            self.write_cache(year, self.data[year])
+                    write_to_cache = True
+            if write_to_cache:
+                self.write_cache(year, self.data[year])
 
     def add_event_matches(self, year: int, event_code: str, matches: List, last_modified: str):
         """ Add matches to our data store.
