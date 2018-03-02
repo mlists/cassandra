@@ -6,7 +6,7 @@ import requests
 import tbapy
 
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 
@@ -32,7 +32,7 @@ class DataStore(object):
         # use the last-modified header
         def _new_tba_get(self, url):
             resp = self.session.get(self.URL_PRE + url, headers={'X-TBA-Auth-Key': self.auth_key,
-                                                    'If-Modified-Since': self.last_modified})
+                                    'If-Modified-Since': self.last_modified})
             if resp.status_code == 200:
                 self.last_modified_response = resp.headers['Last-Modified']
                 return resp.json()
@@ -94,7 +94,7 @@ class DataStore(object):
                 r = self.fetch_event_matches(year, event)
                 if r[1]:
                     self.add_event_matches(year=year, event_code=event, matches=r[1],
-                                       last_modified=r[0])
+                                           last_modified=r[0])
                     write_to_cache = True
             if write_to_cache:
                 self.write_cache(year, self.data[year])
@@ -119,7 +119,8 @@ class DataStore(object):
             logging.warning("Event %s (year %s) is not an event in the data"
                             "store, but matches for it are being added."
                             % (event_code, year))
-        self.data[year][event_code] = [last_modified, matches]
+        event_metadata = self.data[year][event_code][1]
+        self.data[year][event_code] = [last_modified, event_metadata, matches]
         self.write_cache(year, self.data[year])
 
     def get_year_events(self, year: int) -> List[str]:
@@ -144,7 +145,7 @@ class DataStore(object):
             List of matches associated with event_code. `[]` if event_code was
             supplied to constructor, but no matches have been added.
         """
-        event_match_data = self.data[event_year][event_code][1]
+        event_match_data = self.data[event_year][event_code][2]
         # Always return a list,  but return an empty one if no matches have
         # been added to this event.
         return [] if event_match_data is None else event_match_data
@@ -152,9 +153,19 @@ class DataStore(object):
     def fetch_event_matches(self, event_year: int, event_code: str) -> List:
         """ Fetch event matches from TBA. """
 
-        self.tba.last_modified = self.data[event_year][event_code][0]
-        matches = self.tba.event_matches(event_code)
-        return [self.tba.last_modified_response, matches] if matches else ['', None]
+        event_start = datetime.strptime(
+                self.data[event_year][event_code][1]['start_date'], '%Y-%m-%d')
+        event_end = datetime.strptime(
+                self.data[event_year][event_code][1]['end_date'], '%Y-%m-%d')
+        one_day = timedelta(days=1)
+        now = datetime.now()
+        current_entry = self.data[event_year][event_code][-1]
+        if (event_start-one_day < now < event_end+one_day
+           or (current_entry is None and event_start-one_day < now)):
+            self.tba.last_modified = self.data[event_year][event_code][0]
+            matches = self.tba.event_matches(event_code)
+            return [self.tba.last_modified_response, matches] if matches else ['', None]
+        return ['', None]
 
     def write_cache(self, year: int, value):
         """ Write value to the cache for year. """
