@@ -82,9 +82,9 @@ class DataStore(object):
                 self.data[year] = year_odict
                 for event_code in year_events[year]:
                     if event_code not in self.data[year].keys():
-                        self.data[year][event_code] = ['', events_dict[event_code], None]
+                        self.data[year][event_code] = {'last_modified':'', 'info':events_dict[event_code], 'matches':None}
             else:
-                year_odict = OrderedDict((event_code, ['', events_dict[event_code], None])
+                year_odict = OrderedDict((event_code, {'last_modified':'', 'info':events_dict[event_code], 'matches':None})
                                          for event_code in year_events[year])
                 self.data[year] = year_odict
 
@@ -92,10 +92,10 @@ class DataStore(object):
         for year in years:
             write_to_cache = False
             for event in year_events[year]:
-                r = self.fetch_event_matches(year, event)
-                if r[1]:
-                    self.add_event_matches(year=year, event_code=event, matches=r[1],
-                                           last_modified=r[0])
+                last_modified, matches = self.fetch_event_matches(year, event)
+                if matches:
+                    self.add_event_matches(year=year, event_code=event, matches=matches,
+                                           last_modified=last_modified)
                     write_to_cache = True
             if write_to_cache:
                 self.write_cache(year, self.data[year])
@@ -120,8 +120,8 @@ class DataStore(object):
             logging.warning("Event %s (year %s) is not an event in the data"
                             "store, but matches for it are being added."
                             % (event_code, year))
-        event_metadata = self.data[year][event_code][1]
-        self.data[year][event_code] = [last_modified, event_metadata, matches]
+        event_metadata = self.data[year][event_code]['info']
+        self.data[year][event_code] = {'last_modified':last_modified, 'info':event_metadata, 'matches':matches}
         self.write_cache(year, self.data[year])
 
     def add_single_match(self, year: int, event_code: str, match: Match):
@@ -136,7 +136,7 @@ class DataStore(object):
                 to the data store.
 
         """
-        self.data[year][event_code][2][match['key']] = match
+        self.data[year][event_code]['matches'][match['key']] = match
 
     def get_year_events(self, year: int) -> List[str]:
         """ Get the list of event codes for a year from the data store.
@@ -160,7 +160,7 @@ class DataStore(object):
             List of matches associated with event_code. `[]` if event_code was
             supplied to constructor, but no matches have been added.
         """
-        event_match_data = self.data[event_year][event_code][2]
+        event_match_data = self.data[event_year][event_code]['matches']
         # Always return a list,  but return an empty one if no matches have
         # been added to this event.
         return [] if event_match_data is None else event_match_data
@@ -169,19 +169,19 @@ class DataStore(object):
         """ Fetch event matches from TBA. """
 
         event_start = datetime.strptime(
-                self.data[event_year][event_code][1]['start_date'], '%Y-%m-%d')
+                self.data[event_year][event_code]['info']['start_date'], '%Y-%m-%d')
         event_end = datetime.strptime(
-                self.data[event_year][event_code][1]['end_date'], '%Y-%m-%d')
+                self.data[event_year][event_code]['info']['end_date'], '%Y-%m-%d')
         one_day = timedelta(days=1)
         now = datetime.now()
-        current_entry = self.data[event_year][event_code][-1]
+        current_entry = self.data[event_year][event_code]['matches']
         if (event_start-one_day < now < event_end+one_day
            or (current_entry is None and event_start-one_day < now)):
-            self.tba.last_modified = self.data[event_year][event_code][0]
+            self.tba.last_modified = self.data[event_year][event_code]['last_modified']
             matches = self.tba.event_matches(event_code)
             matches_odict = self.sort_by_match_number(matches)
-            return [self.tba.last_modified_response, matches_odict] if matches else ['', None]
-        return ['', None]
+            return (self.tba.last_modified_response, matches_odict) if matches else ('', None)
+        return ('', None)
 
     def write_cache(self, year: int, value):
         """ Write value to the cache for year. """
@@ -198,7 +198,7 @@ class DataStore(object):
         Returns:
             Ordered dict of matches sorted by match / set number. """
 
-        comp_levels = OrderedDict([('qm', []), ('ef', []), ('sf', []), ('f', [])])
+        comp_levels = OrderedDict([('qm', []), ('qf', []), ('sf', []), ('f', [])])
 
         for match in matches:
             comp_levels[match['comp_level']].append(match)
