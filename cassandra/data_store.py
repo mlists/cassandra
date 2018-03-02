@@ -15,7 +15,8 @@ class DataStore(object):
 
     CACHE_FILE_EXTENSION = '-event_matches.p'
 
-    def __init__(self, cache_directory: str='cache', tba_auth_key: str=None, years: list=[]):
+    def __init__(self, cache_directory: str='cache', tba_auth_key: str=None,
+                 years: list=[], empty: bool=False):
         """Initialise the DataStore class.
 
         Args:
@@ -46,14 +47,16 @@ class DataStore(object):
         self.tba.last_modified_response = ''
         self.tba.session = requests.Session()
 
-        self.cache_directory = cache_directory.rstrip('/')
-        if not os.path.exists(self.cache_directory):
-            os.makedirs(cache_directory)
-
         if not years:
             n = datetime.now()
             t = n.timetuple()
             years = range(2008, t[0])
+
+        self.empty = empty
+
+        self.cache_directory = cache_directory.rstrip('/')
+        if not os.path.exists(self.cache_directory):
+            os.makedirs(cache_directory)
 
         # Find the data files. Must be of the form:
         # <year>-event_matches.p
@@ -77,7 +80,7 @@ class DataStore(object):
 
             cache_file = ''.join([self.cache_directory, '/', str(year),
                                   self.CACHE_FILE_EXTENSION])
-            if cache_file in cache_files:
+            if cache_file in cache_files and not self.empty:
                 year_odict = pickle.load(open(cache_file, 'rb'))
                 self.data[year] = year_odict
                 for event_code in year_events[year]:
@@ -91,6 +94,9 @@ class DataStore(object):
                                                        'matches': None})
                                          for event_code in year_events[year])
                 self.data[year] = year_odict
+
+        if self.empty:
+            return
 
         # fetch matches by year and event
         for year in years:
@@ -190,7 +196,8 @@ class DataStore(object):
 
     def write_cache(self, year: int, value):
         """ Write value to the cache for year. """
-
+        if self.empty:
+            return
         cache_file = ''.join([self.cache_directory, '/', str(year),
                               self.CACHE_FILE_EXTENSION])
         pickle.dump(value, open(cache_file, 'wb'))
