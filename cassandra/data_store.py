@@ -8,6 +8,7 @@ import tbapy
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import List
+from tbapy.models import Match
 
 
 class DataStore(object):
@@ -122,6 +123,20 @@ class DataStore(object):
         event_metadata = self.data[year][event_code][1]
         self.data[year][event_code] = [last_modified, event_metadata, matches]
         self.write_cache(year, self.data[year])
+
+    def add_single_match(self, year: int, event_code: str, match: Match):
+        """ Add a single match to the datastore.
+
+        Args:
+            year: The year the matche needs to be added to.
+            event_code: The event code corresponding to the event the matches
+                belong to.
+            match: the match to add to the datastore.
+            last_modified: the last modified time of the match being added
+                to the data store.
+
+        """
+        self.data[year][event_code][2][match['key']] = match
 
     def get_year_events(self, year: int) -> List[str]:
         """ Get the list of event codes for a year from the data store.
