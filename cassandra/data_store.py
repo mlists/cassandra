@@ -62,6 +62,7 @@ class DataStore(object):
         year_events = {}
         # fetch events by year and order chronologically
         for year in years:
+            self.last_modified = ''
             r = self.tba.events(year, simple=True)
 
             # sort by date and don't include offseason events
@@ -80,12 +81,13 @@ class DataStore(object):
                     if event_code not in self.data[year].keys():
                         self.data[year][event_code] = {'last_modified': '',
                                                        'info': events_dict[event_code],
-                                                       'matches': None}
+                                                       'matches': OrderedDict()}
             else:
-                year_odict = OrderedDict((event_code, {'last_modified': '',
-                                                       'info': events_dict[event_code],
-                                                       'matches': None})
-                                         for event_code in year_events[year])
+                year_odict = OrderedDict()
+                for event_code in year_events[year]:
+                    year_odict[event_code] = {'last_modified': '',
+                                              'info': events_dict[event_code],
+                                              'matches': OrderedDict()}
                 self.data[year] = year_odict
 
         if self.empty:
@@ -96,6 +98,7 @@ class DataStore(object):
             write_to_cache = False
             for event in year_events[year]:
                 last_modified, matches = self.fetch_event_matches(year, event)
+                print("Fetching: %s" % event)
                 if matches:
                     self.add_event_matches(year=year, event_code=event, matches=matches,
                                            last_modified=last_modified)
@@ -180,7 +183,7 @@ class DataStore(object):
         now = datetime.now()
         current_entry = self.data[event_year][event_code]['matches']
         if (event_start-one_day < now < event_end+one_day
-           or (current_entry is None and event_start-one_day < now)):
+           or (not current_entry and event_start-one_day < now)):
             self.tba.last_modified = self.data[event_year][event_code]['last_modified']
             matches = self.tba.event_matches(event_code)
             matches_odict = self.sort_by_match_number(matches)
@@ -203,7 +206,7 @@ class DataStore(object):
         Returns:
             Ordered dict of matches sorted by match / set number. """
 
-        comp_levels = OrderedDict([('qm', []), ('qf', []), ('sf', []), ('f', [])])
+        comp_levels = OrderedDict([('qm', []), ('ef', []), ('qf', []), ('sf', []), ('f', [])])
 
         for match in matches:
             comp_levels[match['comp_level']].append(match)
