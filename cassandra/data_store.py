@@ -58,13 +58,6 @@ class DataStore(object):
         if not os.path.exists(self.cache_directory):
             os.makedirs(cache_directory)
 
-        # Find the data files. Must be of the form:
-        # <year>-event_matches.p
-        cache_file_pattern = ''.join([self.cache_directory, '/',
-                                      '????',  # match year
-                                      self.CACHE_FILE_EXTENSION])
-        cache_files = glob.glob(cache_file_pattern)
-
         self.data = OrderedDict()
         year_events = {}
         # fetch events by year and order chronologically
@@ -80,7 +73,7 @@ class DataStore(object):
 
             cache_file = ''.join([self.cache_directory, '/', str(year),
                                   self.CACHE_FILE_EXTENSION])
-            if cache_file in cache_files and not self.empty:
+            if os.path.exists(cache_file) and not self.empty:
                 year_odict = pickle.load(open(cache_file, 'rb'))
                 self.data[year] = year_odict
                 for event_code in year_events[year]:
